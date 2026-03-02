@@ -244,49 +244,36 @@ class BackgroundJobError(RequestError):
 class YouTubeAPI(BaseRapidAPI):
     """
     API client wrapper for YouTube to Telegram/Server/Host endpoints.
-
-    Parameters:
-        api_key: RapidAPI key.
-        timeout: Request timeout in seconds (default 300).
-        max_retries: Retry attempts for downloads (default 5).
-        retry_delay: Seconds between retries (default 1.0).
-        cookies: Netscape-format cookie string sent as X-Cookies header.
-        wait_for_background: **Default True.** When the API queues a heavy job
-            in the background (HTTP 425), the client automatically waits and
-            polls until the job finishes, then returns the final result.
-            Set to ``False`` to raise ``BackgroundJobError`` immediately instead,
-            giving you full control over the retry logic.
-
-    Example — default (auto-wait)::
-
-        async with YouTubeAPI(api_key="key") as client:
-            # If the API needs time, the client waits automatically
-            result = await client.youtube_to_telegram("dQw4w9WgXcQ")
-            print(result.file_url)
-
-    Example — manual retry (wait_for_background=False)::
-
-        async with YouTubeAPI(api_key="key", wait_for_background=False) as client:
-            try:
-                result = await client.youtube_to_telegram("dQw4w9WgXcQ")
-            except BackgroundJobError as e:
-                print(f"Job queued. Retry after {e.response.try_after}s")
-                print(f"Track: {e.response.progress_url}")
     """
 
     BASE_URL = "https://youtube-to-telegram-uploader-api.p.rapidapi.com"
     DEFAULT_HOST = "youtube-to-telegram-uploader-api.p.rapidapi.com"
 
-    def __init__(self, api_key: str, timeout: int = 300, max_retries: int = 5, retry_delay: float = 1.0,
-                 max_wait_time: int = 0, cookies: Optional[str] = None, config: Optional[APIConfig] = None,
-                 wait_for_background: bool = True):
-        super().__init__(api_key=api_key, timeout=timeout, config=config)
+    def __init__(
+        self, 
+        api_key: str, 
+        timeout: int = 300, 
+        max_retries: int = 5, 
+        retry_delay: float = 1.0,
+        max_wait_time: int = 0, 
+        cookies: Optional[str] = None, 
+        config: Optional[APIConfig] = None,
+        wait_for_background: bool = True,
+        session: Optional[aiohttp.ClientSession] = None
+    ):
+        super().__init__(
+            api_key=api_key, 
+            timeout=timeout, 
+            config=config, 
+            session=session 
+        )
 
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._max_wait_time = max_wait_time
         self._cookies = cookies
         self._wait_for_background = wait_for_background
+
 
     def _parse_response_data(self, data: dict, response_class):
         """Helper to convert API response into dataclass objects"""
