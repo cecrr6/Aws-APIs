@@ -747,31 +747,6 @@ class ProgressTracker:
 
 
 class BaseRapidAPI(ABC):
-    """
-    Abstract base class for all RapidAPI clients.
-
-    Provides common functionality:
-    - Session management (__aenter__, __aexit__)
-    - Header creation (_get_headers)
-    - Response validation (uses validate_rapidapi_response)
-    - Error handling (raises AuthenticationError, RequestError)
-    - Configuration support (APIConfig)
-
-    Subclasses must define:
-    - BASE_URL: str - Base URL for the API
-    - DEFAULT_HOST: str - Default RapidAPI host
-
-    Example:
-        class MyAPI(BaseRapidAPI):
-            BASE_URL = "https://my-api.p.rapidapi.com"
-            DEFAULT_HOST = "my-api.p.rapidapi.com"
-
-            async def get_data(self, param: str):
-                data = await self._make_request("GET", "/endpoint", params={"q": param})
-                return MyResult.from_dict(data)
-    """
-
-    # Subclasses must define these
     BASE_URL: str
     DEFAULT_HOST: str
 
@@ -780,83 +755,54 @@ class BaseRapidAPI(ABC):
         api_key: str,
         rapidapi_host: Optional[str] = None,
         timeout: int = 30,
-        config: Optional[APIConfig] = None
+        config: Optional[APIConfig] = None,
+        session: Optional[aiohttp.ClientSession] = None  
     ) -> None:
-        """
-        Initialize API client.
-
-        Args:
-            api_key: RapidAPI key for authentication
-            rapidapi_host: RapidAPI host (uses DEFAULT_HOST if not provided)
-            timeout: Request timeout in seconds (default: 30)
-            config: Optional APIConfig instance (overrides individual params)
-
-        Example:
-            # Simple initialization
-            client = MyAPI(api_key="your_key")
-
-            # With config
-            config = APIConfig(api_key="your_key", max_retries=5)
-            client = MyAPI(config=config)
-        """
         if config:
-            self.api_key: str = config.api_key or api_key
-            self.rapidapi_host: str = config.rapidapi_host or rapidapi_host or self.DEFAULT_HOST
-            self.timeout: aiohttp.ClientTimeout = aiohttp.ClientTimeout(total=config.timeout)
-            self.config: APIConfig = config
+            self.api_key = config.api_key or api_key
+            self.rapidapi_host = config.rapidapi_host or rapidapi_host or self.DEFAULT_HOST
+            self.timeout = aiohttp.ClientTimeout(total=config.timeout)
+            self.config = config
         else:
             self.api_key = api_key
             self.rapidapi_host = rapidapi_host or self.DEFAULT_HOST
             self.timeout = aiohttp.ClientTimeout(total=timeout)
-            self.config = APIConfig(
-                api_key=api_key,
-                rapidapi_host=self.rapidapi_host,
-                timeout=timeout
-            )
-
-        self._session: Optional[aiohttp.ClientSession] = None
+            self.config = APIConfig(api_key=api_key, rapidapi_host=self.rapidapi_host, timeout=timeout)
+        
+        self._session = session 
+        self._external_session = session is not None 
         logger.info(f"{self.__class__.__name__} initialized")
 
     async def __aenter__(self) -> "BaseRapidAPI":
-        """Async context manager entry."""
-        self._session = aiohttp.ClientSession(timeout=self.timeout)
-        logger.debug("HTTP session created")
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=self.timeout)
+            print(" [LOG]  تم إنشاء جلسة جديدة")
+        else:
+            print(f" [LOG] لجلسة المخزنة تعمل! ID: {id(self._session)}")
         return self
-
+        
     async def __aexit__(
         self,
         exc_type: Optional[Type[BaseException]],
         exc_val: Optional[BaseException],
         exc_tb: Any
     ) -> bool:
-        """Async context manager exit."""
-        if self._session:
+        if self._session and not self._external_session:
             await self._session.close()
             logger.debug("HTTP session closed")
         return False
 
     def _get_headers(self, content_type: str = "application/json") -> Dict[str, str]:
-        """
-        Get request headers with authentication.
-
-        Args:
-            content_type: Content-Type header value (default: "application/json")
-
-        Returns:
-            Dictionary with RapidAPI headers + any extra headers from config
-        """
         headers: Dict[str, str] = create_rapidapi_headers(
             api_key=self.api_key,
             rapidapi_host=self.rapidapi_host,
             content_type=content_type
         )
 
-        # Add any extra headers from config
         if self.config and self.config.extra_headers:
             headers.update(self.config.extra_headers)
 
         return headers
-
     async def _make_request(
         self,
         method: str,
